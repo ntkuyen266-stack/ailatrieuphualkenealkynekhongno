@@ -1,0 +1,538 @@
+import React, { useState, useEffect, useCallback, useRef } from 'react';
+import { 
+  Users, 
+  User, 
+  Clock, 
+  Gift, 
+  Phone, 
+  BarChart3, 
+  BrainCircuit, 
+  Trophy, 
+  RotateCcw,
+  Zap,
+  CheckCircle2,
+  XCircle,
+  AlertCircle,
+  Home,
+  ChevronRight,
+  GraduationCap,
+  Sparkles,
+  Flame,
+  ShieldCheck,
+  Medal,
+  Volume2,
+  VolumeX
+} from 'lucide-react';
+
+// --- HỆ THỐNG ÂM THANH (Chỉ giữ lại hiệu ứng SFX) ---
+const SOUNDS = {
+  correct: 'https://assets.mixkit.co/active_storage/sfx/1435/1435-preview.mp3',
+  wrong: 'https://assets.mixkit.co/active_storage/sfx/2004/2004-preview.mp3',
+  click: 'https://assets.mixkit.co/active_storage/sfx/2571/2571-preview.mp3',
+  timerTick: 'https://assets.mixkit.co/active_storage/sfx/2006/2006-preview.mp3',
+  win: 'https://assets.mixkit.co/active_storage/sfx/1435/1435-preview.mp3',
+  lifeline: 'https://assets.mixkit.co/active_storage/sfx/2568/2568-preview.mp3'
+};
+
+// --- DỮ LIỆU CÂU HỎI ---
+const QUESTIONS = [
+  {
+    question: "Chất nào sau đây là thành phần chính của 'khí đá' dùng để giấm chín trái cây?",
+    options: ["Ethylene", "Methane", "Acetylene", "Propylene"],
+    correct: 2,
+    level: "Khởi động"
+  },
+  {
+    question: "Số liên kết pi (π) và liên kết sigma (σ) trong một phân tử Acetylene (C2H2) lần lượt là?",
+    options: ["2π và 3σ", "1π và 2σ", "3π và 2σ", "2π và 2σ"],
+    correct: 0,
+    level: "Dễ"
+  },
+  {
+    question: "Phản ứng cộng nước vào Ethylene (xúc tác H2SO4 loãng, t°) sinh ra sản phẩm là?",
+    options: ["Ethanol", "Ethanal", "Ethane", "Ethylene glycol"],
+    correct: 0,
+    level: "Trung bình"
+  },
+  {
+    question: "Quy tắc Markovnikov áp dụng cho phản ứng cộng HX vào alkene nào sau đây?",
+    options: ["Ethylene", "But-2-ene", "Propylene", "But-2-yne"],
+    correct: 2,
+    level: "Trung bình"
+  },
+  {
+    question: "Sản phẩm của phản ứng trùng hợp Ethylene được gọi là gì?",
+    options: ["Nhựa PP", "Nhựa PVC", "Nhựa PE", "Cao su Buna"],
+    correct: 2,
+    level: "Trung bình"
+  },
+  {
+    question: "Chất nào làm mất màu dung dịch thuốc tím KMnO4 ở điều kiện thường?",
+    options: ["Propane", "Ethylene", "Benzene", "Methane"],
+    correct: 1,
+    level: "Khá"
+  },
+  {
+    question: "Khi cho Acetylene tác dụng với dung dịch AgNO3/NH3, hiện tượng xảy ra là?",
+    options: ["Có khí thoát ra", "Dung dịch mất màu", "Kết tủa vàng nhạt", "Kết tủa trắng"],
+    correct: 2,
+    level: "Khó"
+  },
+  {
+    question: "Đồng phân hình học (cis-trans) chỉ xuất hiện ở những alkene có đặc điểm gì?",
+    options: ["Mạch thẳng", "Có liên kết ba", "Mỗi C của nối đôi liên kết với 2 nhóm khác nhau", "Có từ 4 carbon trở lên"],
+    correct: 2,
+    level: "Khó"
+  },
+  {
+    question: "Để tinh chế ethylene có lẫn acetylene, người ta dẫn hỗn hợp khí qua dung dịch nào?",
+    options: ["Nước Bromine dư", "Dung dịch AgNO3/NH3 dư", "Dung dịch KMnO4", "Dung dịch NaOH"],
+    correct: 1,
+    level: "Cực khó"
+  },
+  {
+    question: "[CÂU HỎI VÀNG] Đốt cháy hoàn toàn 1 mol Alkyne X thu được số mol CO2 lớn hơn số mol H2O là 1 mol. X là?",
+    options: ["C2H2", "C3H4", "C4H6", "Mọi Alkyne đều thỏa mãn"],
+    correct: 3,
+    level: "Vô địch",
+    isGolden: true
+  }
+];
+
+const App = () => {
+  // Navigation State
+  const [gameState, setGameState] = useState('LANDING'); 
+  const [mode, setMode] = useState(null); 
+  
+  // Trạng thái âm thanh (Chỉ dành cho SFX)
+  const [isMuted, setIsMuted] = useState(false);
+
+  // Thông tin người chơi
+  const [player, setPlayer] = useState({ name: '', class: '' });
+  
+  // Trạng thái Game
+  const [currentIdx, setCurrentIdx] = useState(0);
+  const [timer, setTimer] = useState(30); 
+  const [scores, setScores] = useState({ teamA: 0, teamB: 0, solo: 0 });
+  const [turn, setTurn] = useState('teamA');
+  const [selectedOption, setSelectedOption] = useState(null);
+  const [isRevealed, setIsRevealed] = useState(false);
+  
+  // Lifelines
+  const [lifelines, setLifelines] = useState({
+    teamA: { fifty: true, audience: true, ai: true, gift: true },
+    teamB: { fifty: true, audience: true, ai: true, gift: true },
+    solo: { fifty: true, audience: true, ai: true, gift: true }
+  });
+  
+  const [hiddenOptions, setHiddenOptions] = useState([]);
+  const [audienceResult, setAudienceResult] = useState(null);
+  const [aiThinking, setAiThinking] = useState(false);
+  const [showTurnAnnounce, setShowTurnAnnounce] = useState(false);
+
+  const currentQuestion = QUESTIONS[currentIdx];
+  const activeHelp = mode === 'VERSUS' ? lifelines[turn] : lifelines.solo;
+
+  // --- HÀM XỬ LÝ ÂM THANH (Chỉ SFX) ---
+  const playSound = (soundKey) => {
+    if (isMuted) return;
+    const audio = new Audio(SOUNDS[soundKey]);
+    audio.play().catch(e => console.log("Audio play failed", e));
+  };
+
+  // Nhạc nền đã bị loại bỏ hoàn toàn khỏi code logic
+
+  // --- LOGIC ĐIỀU KHIỂN ---
+
+  const startSolo = () => {
+    playSound('click');
+    setMode('SOLO');
+    setGameState('INFO');
+  };
+
+  const startVersus = () => {
+    playSound('click');
+    setMode('VERSUS');
+    setGameState('PLAYING');
+    initGame();
+  };
+
+  const initGame = () => {
+    setCurrentIdx(0);
+    setScores({ teamA: 0, teamB: 0, solo: 0 });
+    setTurn('teamA');
+    resetRound();
+  };
+
+  const resetRound = () => {
+    setTimer(30);
+    setSelectedOption(null);
+    setIsRevealed(false);
+    setHiddenOptions([]);
+    setAudienceResult(null);
+    setAiThinking(false);
+  };
+
+  // Đếm ngược với hiệu ứng âm thanh tick-tock
+  useEffect(() => {
+    let interval;
+    if (gameState === 'PLAYING' && timer > 0 && !isRevealed && !aiThinking) {
+      interval = setInterval(() => {
+        setTimer(t => {
+          if (t <= 5 && t > 1) playSound('timerTick'); 
+          return t - 1;
+        });
+      }, 1000);
+    } else if (timer === 0 && !isRevealed && gameState === 'PLAYING') {
+      handleSelect(null);
+    }
+    return () => clearInterval(interval);
+  }, [timer, gameState, isRevealed, aiThinking, isMuted]);
+
+  const handleSelect = (idx) => {
+    if (isRevealed) return;
+    setSelectedOption(idx);
+    setIsRevealed(true);
+
+    const isCorrect = idx === currentQuestion.correct;
+    const points = currentQuestion.isGolden ? 200 : 100;
+
+    if (isCorrect) {
+      playSound('correct');
+      setScores(prev => ({
+        ...prev,
+        [mode === 'VERSUS' ? turn : 'solo']: prev[mode === 'VERSUS' ? turn : 'solo'] + points
+      }));
+    } else {
+      playSound('wrong');
+    }
+
+    setTimeout(() => {
+      if (currentIdx < QUESTIONS.length - 1) {
+        setCurrentIdx(prev => prev + 1);
+        if (mode === 'VERSUS') {
+          setTurn(turn === 'teamA' ? 'teamB' : 'teamA');
+          setShowTurnAnnounce(true);
+          setTimeout(() => setShowTurnAnnounce(false), 1500);
+        }
+        resetRound();
+      } else {
+        playSound('win');
+        setGameState('RESULT');
+      }
+    }, 2500);
+  };
+
+  const useHelp = (type) => {
+    if (!activeHelp[type] || isRevealed) return;
+    playSound('lifeline');
+
+    if (type === 'fifty') {
+      const wrongs = currentQuestion.options
+        .map((_, i) => i)
+        .filter(i => i !== currentQuestion.correct);
+      const toHide = wrongs.sort(() => 0.5 - Math.random()).slice(0, 2);
+      setHiddenOptions(toHide);
+    } else if (type === 'audience') {
+      const results = [15, 10, 5, 5];
+      results[currentQuestion.correct] = 70;
+      setAudienceResult(results);
+    } else if (type === 'ai') {
+      setAiThinking(true);
+      setTimeout(() => setAiThinking(false), 2500);
+    } else if (type === 'gift') {
+      setTimer(prev => prev + 15);
+    }
+
+    setLifelines(prev => ({
+      ...prev,
+      [mode === 'VERSUS' ? turn : 'solo']: {
+        ...prev[mode === 'VERSUS' ? turn : 'solo'],
+        [type]: false
+      }
+    }));
+  };
+
+  const goHome = () => {
+    playSound('click');
+    setGameState('LANDING');
+    setPlayer({ name: '', class: '' });
+    resetFull();
+  };
+
+  const resetFull = () => {
+    setCurrentIdx(0);
+    setScores({ teamA: 0, teamB: 0, solo: 0 });
+    setTurn('teamA');
+    setMode(null);
+    setLifelines({
+      teamA: { fifty: true, audience: true, ai: true, gift: true },
+      teamB: { fifty: true, audience: true, ai: true, gift: true },
+      solo: { fifty: true, audience: true, ai: true, gift: true }
+    });
+  };
+
+  return (
+    <div className="min-h-screen bg-[#030712] text-slate-100 font-sans selection:bg-yellow-500/30 overflow-x-hidden relative">
+      
+      {/* Hiệu ứng nền */}
+      <div className="fixed inset-0 pointer-events-none z-0">
+        <div className="absolute top-[-10%] left-[-10%] w-[50%] h-[50%] bg-blue-900/20 rounded-full blur-[120px]" />
+        <div className="absolute bottom-[-10%] right-[-10%] w-[50%] h-[50%] bg-amber-900/10 rounded-full blur-[120px]" />
+        <div className="absolute inset-0 bg-[linear-gradient(rgba(255,255,255,0.02)_1px,transparent_1px),linear-gradient(90deg,rgba(255,255,255,0.02)_1px,transparent_1px)] bg-[size:40px_40px]" />
+      </div>
+
+      <div className="relative z-10 max-w-5xl mx-auto px-4 py-6 md:py-8 min-h-screen flex flex-col">
+        
+        {/* HEADER */}
+        <header className="flex justify-between items-center mb-10 bg-white/5 backdrop-blur-xl border border-white/10 p-4 rounded-3xl shadow-2xl">
+          <div className="flex items-center gap-3">
+            <div className="p-2.5 bg-gradient-to-tr from-amber-500 to-yellow-300 rounded-2xl shadow-lg shadow-yellow-500/20">
+              <BrainCircuit className="w-6 h-6 text-slate-900" />
+            </div>
+            <div>
+              <h1 className="text-xl font-black tracking-tighter uppercase italic leading-none">
+                AI <span className="text-amber-400">Triệu Phú</span>
+              </h1>
+              <span className="text-[10px] font-bold text-slate-500 tracking-[0.3em] uppercase">Hóa Học 11</span>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-2">
+            <button 
+              onClick={() => setIsMuted(!isMuted)}
+              className="p-2.5 hover:bg-white/10 rounded-2xl transition-all mr-2"
+              title={isMuted ? "Bật SFX" : "Tắt SFX"}
+            >
+              {isMuted ? <VolumeX className="w-5 h-5 text-red-500" /> : <Volume2 className="w-5 h-5 text-green-400" />}
+            </button>
+            {gameState !== 'LANDING' && (
+              <div className="hidden sm:block text-right mr-4">
+                <p className="text-xs font-bold text-slate-400">
+                  {mode === 'SOLO' ? (player.name || 'Người chơi') : 'Chế độ Đối kháng'}
+                </p>
+                <p className="text-[10px] text-amber-500 font-black uppercase tracking-widest">
+                  {mode === 'SOLO' ? player.class : 'Đội A vs Đội B'}
+                </p>
+              </div>
+            )}
+            <button 
+              onClick={goHome}
+              className="p-2.5 hover:bg-white/10 rounded-2xl transition-all group"
+            >
+              <Home className="w-5 h-5 text-slate-400 group-hover:text-white" />
+            </button>
+          </div>
+        </header>
+
+        {/* --- MAIN SCREENS --- */}
+
+        {gameState === 'LANDING' && (
+          <div className="flex-1 flex flex-col items-center justify-center animate-in fade-in slide-in-from-bottom-10 duration-700">
+            <div className="text-center mb-12 relative">
+              <div className="absolute -top-10 left-1/2 -translate-x-1/2 flex items-center gap-2 px-4 py-1 rounded-full bg-amber-500/10 border border-amber-500/20 text-amber-500 text-[10px] font-black tracking-widest uppercase">
+                <Sparkles className="w-3 h-3" /> SFX Only
+              </div>
+              <h2 className="text-6xl md:text-8xl font-black mb-6 italic tracking-tighter bg-gradient-to-b from-white via-slate-200 to-slate-500 bg-clip-text text-transparent">
+                CHINH PHỤC <br /> <span className="text-amber-400">HYDROCARBON</span>
+              </h2>
+              <p className="text-slate-400 text-lg max-w-lg mx-auto font-medium">
+                Hệ thống âm thanh hiệu ứng kịch tính (không nhạc nền).
+              </p>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-8 w-full max-w-3xl px-4">
+              <button 
+                onClick={startSolo}
+                className="group relative p-10 bg-white/5 border border-white/10 rounded-[2.5rem] hover:border-blue-500 hover:bg-blue-500/5 transition-all text-left overflow-hidden"
+              >
+                <div className="absolute -right-8 -bottom-8 opacity-5 group-hover:opacity-10 transition-all rotate-12 group-hover:rotate-0">
+                  <User className="w-48 h-48" />
+                </div>
+                <User className="w-12 h-12 text-blue-500 mb-6" />
+                <h3 className="text-3xl font-black mb-2 uppercase italic tracking-tight">Cá nhân</h3>
+                <p className="text-slate-500 text-sm font-medium italic">Vượt qua thử thách để vinh danh bản thân.</p>
+              </button>
+
+              <button 
+                onClick={startVersus}
+                className="group relative p-10 bg-white/5 border border-white/10 rounded-[2.5rem] hover:border-amber-500 hover:bg-amber-500/5 transition-all text-left overflow-hidden"
+              >
+                <div className="absolute -right-8 -bottom-8 opacity-5 group-hover:opacity-10 transition-all -rotate-12 group-hover:rotate-0">
+                  <Users className="w-48 h-48" />
+                </div>
+                <Users className="w-12 h-12 text-amber-500 mb-6" />
+                <h3 className="text-3xl font-black mb-2 uppercase italic tracking-tight">Đối kháng</h3>
+                <p className="text-slate-500 text-sm font-medium italic">Đấu trí nghẹt thở giữa 2 đội A và B.</p>
+              </button>
+            </div>
+          </div>
+        )}
+
+        {gameState === 'INFO' && (
+          <div className="flex-1 flex flex-col items-center justify-center animate-in zoom-in duration-500">
+            <div className="bg-white/5 backdrop-blur-2xl border border-white/10 p-10 rounded-[3rem] w-full max-w-md shadow-2xl relative">
+              <div className="absolute -top-8 left-1/2 -translate-x-1/2 bg-blue-600 p-4 rounded-3xl shadow-xl">
+                <GraduationCap className="w-8 h-8 text-white" />
+              </div>
+              <h2 className="text-3xl font-black mb-8 text-center uppercase italic tracking-tight mt-4">Thông tin Sĩ tử</h2>
+              <form onSubmit={(e) => { e.preventDefault(); if(player.name && player.class) { playSound('click'); setGameState('PLAYING'); resetRound(); } }} className="space-y-6">
+                <input 
+                  required type="text" placeholder="Họ và Tên"
+                  className="w-full bg-slate-900/50 border-2 border-slate-800 rounded-2xl px-6 py-4 focus:border-blue-500 outline-none transition-all font-bold"
+                  value={player.name} onChange={(e) => setPlayer({...player, name: e.target.value})}
+                />
+                <input 
+                  required type="text" placeholder="Lớp (Ví dụ: 11A1)"
+                  className="w-full bg-slate-900/50 border-2 border-slate-800 rounded-2xl px-6 py-4 focus:border-blue-500 outline-none transition-all font-bold"
+                  value={player.class} onChange={(e) => setPlayer({...player, class: e.target.value})}
+                />
+                <button type="submit" className="w-full bg-blue-600 hover:bg-blue-500 p-5 rounded-2xl font-black text-lg uppercase tracking-widest shadow-lg flex items-center justify-center gap-2 transition-all">
+                  Bắt đầu giải đố <ChevronRight className="w-6 h-6" />
+                </button>
+              </form>
+            </div>
+          </div>
+        )}
+
+        {gameState === 'PLAYING' && (
+          <div className="flex-1 flex flex-col animate-in fade-in duration-500">
+            {/* Header Game */}
+            <div className="flex justify-between items-end mb-8">
+              <div className="space-y-2">
+                <span className={`px-3 py-1 rounded-lg text-[10px] font-black uppercase tracking-tighter ${currentQuestion.isGolden ? 'bg-amber-500 text-black animate-bounce' : 'bg-slate-800 text-slate-400'}`}>
+                  {currentQuestion.isGolden ? '🌟 Câu Hỏi Vàng (X2)' : currentQuestion.level}
+                </span>
+                <h2 className="text-4xl md:text-5xl font-black text-white italic tracking-tighter">
+                  Câu {currentIdx + 1}<span className="text-slate-600 text-2xl font-bold ml-2">/ 10</span>
+                </h2>
+              </div>
+              <div className={`relative w-20 h-20 flex items-center justify-center rounded-[2rem] border-4 shadow-2xl transition-all duration-300 ${timer <= 5 ? 'border-red-500 text-red-500 animate-pulse bg-red-500/10 scale-110' : 'border-amber-500 text-amber-500 bg-amber-500/10'}`}>
+                <Clock className="absolute -top-2 -right-2 w-6 h-6 bg-[#030712] p-1 rounded-full" />
+                <span className="text-3xl font-black font-mono">{timer}</span>
+              </div>
+            </div>
+
+            {/* Khung Câu Hỏi */}
+            <div className="relative mb-8 bg-white/5 backdrop-blur-md border border-white/10 p-10 md:p-14 rounded-[3rem] shadow-2xl text-center">
+              <p className="text-2xl md:text-3xl font-black italic text-slate-100 leading-relaxed">
+                "{currentQuestion.question}"
+              </p>
+            </div>
+
+            {/* Đáp Án */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-5 mb-10">
+              {currentQuestion.options.map((option, idx) => {
+                const isSelected = selectedOption === idx;
+                const isCorrect = isRevealed && idx === currentQuestion.correct;
+                const isWrong = isRevealed && isSelected && idx !== currentQuestion.correct;
+                const isHidden = hiddenOptions.includes(idx);
+
+                return (
+                  <button
+                    key={idx} disabled={isRevealed || isHidden} onClick={() => handleSelect(idx)}
+                    className={`relative p-6 rounded-[2rem] border-2 text-left transition-all duration-300 flex items-center gap-5 overflow-hidden
+                      ${isHidden ? 'opacity-0 scale-90 pointer-events-none' : 'opacity-100 scale-100'}
+                      ${isCorrect ? 'bg-green-500/20 border-green-500 shadow-[0_0_25px_rgba(34,197,94,0.3)]' :
+                        isWrong ? 'bg-red-500/20 border-red-500 shadow-[0_0_25px_rgba(239,68,68,0.3)]' :
+                        isSelected ? 'bg-blue-500/20 border-blue-500 animate-pulse' :
+                        'bg-white/5 border-white/10 hover:border-slate-500'}
+                    `}
+                  >
+                    <div className={`w-14 h-14 flex items-center justify-center rounded-2xl font-black text-2xl shrink-0 transition-all ${isCorrect ? 'bg-green-500 text-white' : isWrong ? 'bg-red-500 text-white' : isSelected ? 'bg-blue-500 text-white' : 'bg-slate-800 text-slate-500'}`}>
+                      {String.fromCharCode(65 + idx)}
+                    </div>
+                    <span className="text-lg md:text-xl font-bold tracking-tight">{option}</span>
+                    {isCorrect && <CheckCircle2 className="absolute right-8 w-8 h-8 text-green-500" />}
+                    {isWrong && <XCircle className="absolute right-8 w-8 h-8 text-red-500" />}
+                  </button>
+                );
+              })}
+            </div>
+
+            {/* Quyền trợ giúp */}
+            <div className="mt-auto bg-white/5 backdrop-blur-xl border border-white/10 rounded-[2.5rem] p-5 flex justify-around items-center">
+               {[
+                 { id: 'fifty', icon: Zap, label: '50:50', color: 'text-yellow-400' },
+                 { id: 'audience', icon: BarChart3, label: 'Khán Giả', color: 'text-blue-400' },
+                 { id: 'ai', icon: Phone, label: 'Gọi AI', color: 'text-purple-400' },
+                 { id: 'gift', icon: Gift, label: 'Thêm Giờ', color: 'text-pink-400' }
+               ].map((h) => (
+                 <button key={h.id} onClick={() => useHelp(h.id)} disabled={!activeHelp[h.id] || isRevealed} className={`flex flex-col items-center gap-1.5 transition-all p-3 rounded-2xl ${activeHelp[h.id] ? 'hover:bg-white/10 opacity-100' : 'opacity-20 grayscale'}`}>
+                   <h.icon className={`w-7 h-7 ${h.color}`} />
+                   <span className="text-[10px] font-black uppercase text-slate-400">{h.label}</span>
+                 </button>
+               ))}
+            </div>
+          </div>
+        )}
+
+        {gameState === 'RESULT' && (
+          <div className="flex-1 flex flex-col items-center justify-center animate-in zoom-in duration-700">
+            <Trophy className="w-32 h-32 text-amber-500 mb-8 animate-bounce" />
+            <h2 className="text-5xl font-black mb-10 uppercase italic text-center">Bảng Vinh Danh</h2>
+            <div className="bg-white/5 border border-white/10 p-10 rounded-[3rem] w-full max-w-lg text-center shadow-2xl mb-12">
+               {mode === 'SOLO' ? (
+                 <>
+                   <p className="text-3xl font-black mb-2">{player.name}</p>
+                   <p className="text-blue-400 font-bold mb-6">{player.class}</p>
+                   <div className="text-7xl font-black text-amber-400">{scores.solo} <span className="text-xl text-slate-600 font-bold">Điểm</span></div>
+                 </>
+               ) : (
+                 <div className="grid grid-cols-2 gap-8">
+                    <div><p className="text-blue-400 font-black mb-2">Đội A</p><p className="text-5xl font-black">{scores.teamA}</p></div>
+                    <div><p className="text-amber-500 font-black mb-2">Đội B</p><p className="text-5xl font-black">{scores.teamB}</p></div>
+                 </div>
+               )}
+            </div>
+            <button onClick={goHome} className="px-10 py-5 bg-white text-slate-900 rounded-[2rem] font-black uppercase flex items-center gap-3 shadow-xl hover:scale-105 transition-all">
+              <RotateCcw className="w-6 h-6" /> Chơi lại từ đầu
+            </button>
+          </div>
+        )}
+
+        {/* --- MODALS --- */}
+        {audienceResult && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/90 backdrop-blur-xl animate-in fade-in">
+             <div className="bg-[#030712] border border-white/10 p-10 rounded-[3rem] w-full max-w-sm">
+                <h3 className="text-2xl font-black text-center mb-10 italic uppercase">Khán giả bình chọn</h3>
+                <div className="flex items-end justify-between gap-4 h-48 mb-10">
+                   {audienceResult.map((val, i) => (
+                     <div key={i} className="flex-1 flex flex-col items-center gap-2 h-full justify-end">
+                        <div className="w-full bg-blue-500 rounded-t-xl transition-all duration-1000" style={{ height: `${val}%` }} />
+                        <span className="text-xs font-black">{val}%</span>
+                        <span className="text-sm font-black text-slate-500">{String.fromCharCode(65 + i)}</span>
+                     </div>
+                   ))}
+                </div>
+                <button onClick={() => setAudienceResult(null)} className="w-full py-4 bg-blue-600 rounded-2xl font-black uppercase">Xác nhận</button>
+             </div>
+          </div>
+        )}
+
+        {aiThinking && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/95 backdrop-blur-2xl">
+             <div className="text-center p-8">
+                <BrainCircuit className="w-20 h-20 text-purple-400 mx-auto animate-spin mb-6" />
+                <h3 className="text-3xl font-black italic mb-6 uppercase tracking-tighter">AI đang truy xuất...</h3>
+                <div className="bg-white/5 p-8 rounded-[2.5rem] border-l-4 border-purple-500 text-left max-w-sm">
+                   <p className="text-slate-200">"Phân tích cơ chế phản ứng cho thấy đáp án <span className="text-purple-400 font-black">{String.fromCharCode(65 + currentQuestion.correct)}</span> là lựa chọn tối ưu nhất."</p>
+                </div>
+             </div>
+          </div>
+        )}
+
+        {showTurnAnnounce && (
+           <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-950/50 backdrop-blur-sm animate-in zoom-in duration-300">
+              <div className={`px-20 py-10 rounded-[3rem] border-4 shadow-2xl ${turn === 'teamA' ? 'bg-blue-600 border-blue-400 shadow-blue-500/20' : 'bg-amber-600 border-amber-400 shadow-amber-500/20'}`}>
+                 <h3 className="text-6xl font-black italic text-white uppercase tracking-tighter">Lượt của {turn === 'teamA' ? 'Đội A' : 'Đội B'}</h3>
+              </div>
+           </div>
+        )}
+
+      </div>
+    </div>
+  );
+};
+
+export default App;
